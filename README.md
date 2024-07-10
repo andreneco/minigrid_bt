@@ -73,5 +73,3 @@ Feel free to contribute by submitting issues or pull requests. For major changes
 
 This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
 ```
-
-This `README.md` provides a comprehensive overview of the package, including installation instructions, usage, and a description of the directory structure and module contents.
