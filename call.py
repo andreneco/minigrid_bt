@@ -7,7 +7,7 @@ from minigrid.manual_control import ManualControl
 
 # List of environment IDs
 env_ids = [
-    "MiniGrid-ObstructedMaze-1Dlhb-v0", #0 PROBLEM------------------------
+    "MiniGrid-ObstructedMaze-1Dlhb-v0", #0 create_ObstructedMaze_bt ok
     "MiniGrid-Empty-6x6-v0", #1 create_Empty_bt ok
     "MiniGrid-Empty-8x8-v0", #2 create_Empty_bt ok
     "MiniGrid-Empty-Random-5x5-v0", #3 create_Empty_bt ok
@@ -120,7 +120,8 @@ step_count = 0
 while not done:
     # Predict the next action using the behavior tree policy
     action, _ = policy.predict(obs)
-
+    # print("ACTION: ", action)
+    # input("Press...")
     if action is not None:
         # Step the environment using the action
         obs, reward, done, info, *_ = policy.env.step(action)

@@ -1,5 +1,3 @@
-# minigrid_bt/behaviors.py
-
 import py_trees
 import numpy as np
 from minigrid_bt.utils import (
@@ -12,15 +10,18 @@ from minigrid_bt.utils import (
 from minigrid_bt.shared_status import SharedStatus  # Import SharedStatus from the separate module
 
 class GoToGoal(py_trees.behaviour.Behaviour):
-    def __init__(self, name, env, obs, goal_object="goal"):
+    def __init__(self, name, env, obs, goal_object="goal", debug=False):
         super(GoToGoal, self).__init__(name)
         self.env = env
         self.obs = obs
         self.goal_object = goal_object
         self.action_sequence = []
         self.current_action_index = 0
+        self.debug = debug
 
     def initialise(self):
+        if self.debug:
+            print(f"Initializing {self.name}")
         grid, agent_dir = extract_grid_and_direction(self.obs)
         positions = extract_positions(self.obs)
         agent_pos = positions.get('agent')
@@ -41,31 +42,43 @@ class GoToGoal(py_trees.behaviour.Behaviour):
 
     def update(self):
         global current_action
-        if 0 <= self.current_action_index < len(self.action_sequence):
+        if self.debug:
+            print(f"{self.name} is active.")
+            print(self.action_sequence)
+        if self.current_action_index < len(self.action_sequence):
             current_action['action'] = self.action_sequence[self.current_action_index]
             self.current_action_index += 1
-            if self.current_action_index >= len(self.action_sequence):
-                self.current_action_index = 0
-                return py_trees.common.Status.SUCCESS
             return py_trees.common.Status.RUNNING
         else:
-            self.current_action_index = 0
-            return py_trees.common.Status.FAILURE
+            if self.current_action_index == len(self.action_sequence):
+                self.current_action_index = 0
+                return py_trees.common.Status.SUCCESS
+            else:
+                self.current_action_index = 0
+                return py_trees.common.Status.FAILURE
 
 class GoNextToGoal(py_trees.behaviour.Behaviour):
-    def __init__(self, name, env, obs, goal_object="goal"):
+    def __init__(self, name, env, obs, goal_object="goal", goal_color=None, debug=False):
         super(GoNextToGoal, self).__init__(name)
         self.env = env
         self.obs = obs
         self.goal_object = goal_object
+        self.goal_color = goal_color
         self.action_sequence = []
         self.current_action_index = 0
+        self.debug = debug
 
     def initialise(self):
+        if self.debug:
+            print(f"Initializing {self.name}")
         grid, agent_dir = extract_grid_and_direction(self.obs)
         positions = extract_positions(self.obs)
         agent_pos = positions.get('agent')
-        goal_pos = positions.get(self.goal_object)
+        
+        if self.goal_object == "ball" and self.goal_color:
+            goal_pos = find_ball_position(self.obs, self.goal_color)
+        else:
+            goal_pos = positions.get(self.goal_object)
 
         if goal_pos:
             path_to_goal = astar_pathfinding(grid[:, :, 0], agent_pos, goal_pos, agent_dir)
@@ -75,38 +88,64 @@ class GoNextToGoal(py_trees.behaviour.Behaviour):
                 self.feedback_message = "Cannot determine path to goal."
                 self.action_sequence = []
         else:
-            self.feedback_message = "Goal position not found."
+            self.feedback_message = f"Goal position for {self.goal_object} not found."
 
     def update_obs(self, new_obs):
         self.obs = new_obs
 
     def update(self):
         global current_action
-        if 0 <= self.current_action_index < len(self.action_sequence):
+        if self.debug:
+            print(f"{self.name} is active.")
+            print(self.action_sequence)
+        if self.current_action_index < len(self.action_sequence):
             current_action['action'] = self.action_sequence[self.current_action_index]
             self.current_action_index += 1
-            if self.current_action_index >= len(self.action_sequence):
-                self.current_action_index = 0
-                return py_trees.common.Status.SUCCESS
             return py_trees.common.Status.RUNNING
         else:
-            self.current_action_index = 0
-            return py_trees.common.Status.FAILURE
-        
+            if self.current_action_index == len(self.action_sequence):
+                self.current_action_index = 0
+                return py_trees.common.Status.SUCCESS
+            else:
+                self.current_action_index = 0
+                return py_trees.common.Status.FAILURE
+
+
+import py_trees
+import numpy as np
+from minigrid_bt.utils import (
+    extract_grid_and_direction, extract_positions,
+    align_direction_to_target, find_ball_position,
+    astar_pathfinding, prepare_action_sequence,
+    ACTION_TO_IDX, direction_map, current_action
+)
+
 class PickUp(py_trees.behaviour.Behaviour):
-    def __init__(self, name, env, obs, goal_object="ball"):
+    def __init__(self, name, env, obs, goal_object="ball", goal_color=None, debug=False):
         super(PickUp, self).__init__(name)
         self.env = env
         self.obs = obs
         self.goal_object = goal_object
+        self.goal_color = goal_color
         self.action_sequence = []
         self.current_action_index = 0
+        self.debug = debug
 
     def initialise(self):
+        if self.debug:
+            print(f"Initializing {self.name}")
         grid, agent_dir = extract_grid_and_direction(self.obs)
         positions = extract_positions(self.obs)
         agent_pos = positions.get('agent')
-        goal_pos = positions.get(self.goal_object)
+
+        if self.goal_object == "ball" and self.goal_color:
+            goal_pos = find_ball_position(self.obs, self.goal_color)
+        else:
+            goal_pos = positions.get(self.goal_object)
+
+        if not goal_pos:
+            self.feedback_message = f"Cannot find {self.goal_object} position."
+            return
 
         agent_neighbors = [
             (agent_pos[0] + 1, agent_pos[1]),
@@ -114,47 +153,171 @@ class PickUp(py_trees.behaviour.Behaviour):
             (agent_pos[0], agent_pos[1] - 1),
             (agent_pos[0] - 1, agent_pos[1]),
         ]
-        if goal_pos:
-            if goal_pos in agent_neighbors:
-                self.feedback_message = "Already a neighbor, maybe needs to adjust direction."
-                self.action_sequence += align_direction_to_target(agent_pos, goal_pos, agent_dir)
+        if goal_pos in agent_neighbors:
+            self.feedback_message = "Already a neighbor, maybe needs to adjust direction."
+            self.action_sequence = align_direction_to_target(agent_pos, goal_pos, agent_dir)
+            self.action_sequence.append(ACTION_TO_IDX["pick_up"])
+        else:
+            path_to_goal = astar_pathfinding(grid[:, :, 0], agent_pos, goal_pos, agent_dir)
+            if path_to_goal:
+                self.action_sequence = prepare_action_sequence(path_to_goal, agent_dir, goal_pos)
+                if len(path_to_goal) >= 2:
+                    last_position = path_to_goal[-1]
+                    second_last_position = path_to_goal[-2]
+                    move_vector = (second_last_position[0] - last_position[0], second_last_position[1] - last_position[1])
+                else:
+                    move_vector = (0, 0)
+                current_direction = direction_map.get(move_vector)
+                if current_direction is None:
+                    raise ValueError(f"Invalid move vector {move_vector}. Cannot determine direction from start={agent_pos} to end={goal_pos}.")
                 self.action_sequence.append(ACTION_TO_IDX["pick_up"])
             else:
-                path_to_goal = astar_pathfinding(grid[:, :, 0], agent_pos, goal_pos, agent_dir)
-                if path_to_goal:
-                    self.action_sequence = prepare_action_sequence(path_to_goal, agent_dir, goal_pos)
-                    if len(path_to_goal) >= 2:
-                        last_position = path_to_goal[-1]
-                        second_last_position = path_to_goal[-2]
-                        move_vector = (second_last_position[0] - last_position[0], second_last_position[1] - last_position[1])
-                    else:
-                        move_vector = (0, 0)
-                    current_direction = direction_map.get(move_vector)
-                    if current_direction is None:
-                        raise ValueError(f"Invalid move vector {move_vector}. Cannot determine direction from start={agent_pos} to end={goal_pos}.")
-                    #self.action_sequence += align_direction_to_target(last_position, goal_pos, current_direction)
-                    self.action_sequence.append(ACTION_TO_IDX["pick_up"])
-                else:
-                    self.feedback_message = "Cannot determine path to goal."
-                    self.action_sequence = []
-        else:
-            self.feedback_message = "Goal position not found."
+                self.feedback_message = "Cannot determine path to goal."
+                self.action_sequence = []
 
     def update_obs(self, new_obs):
         self.obs = new_obs
 
     def update(self):
         global current_action
+        if self.debug:
+            print(f"{self.name} is active.")
+            print(self.action_sequence)
         if self.current_action_index < len(self.action_sequence):
             current_action['action'] = self.action_sequence[self.current_action_index]
             self.current_action_index += 1
             return py_trees.common.Status.RUNNING
         else:
-            self.current_action_index = 0
-            return py_trees.common.Status.SUCCESS
+            if self.current_action_index == len(self.action_sequence):
+                self.current_action_index = 0
+                return py_trees.common.Status.SUCCESS
+            else:
+                self.current_action_index = 0
+                return py_trees.common.Status.FAILURE
+
+
+# class PickUp(py_trees.behaviour.Behaviour):
+#     def __init__(self, name, env, obs, goal_object="ball", debug=False):
+#         super(PickUp, self).__init__(name)
+#         self.env = env
+#         self.obs = obs
+#         self.goal_object = goal_object
+#         self.action_sequence = []
+#         self.current_action_index = 0
+#         self.debug = debug
+
+#     def initialise(self):
+#         if self.debug:
+#             print(f"Initializing {self.name}")
+#         grid, agent_dir = extract_grid_and_direction(self.obs)
+#         positions = extract_positions(self.obs)
+#         agent_pos = positions.get('agent')
+#         goal_pos = positions.get(self.goal_object)
+
+#         agent_neighbors = [
+#             (agent_pos[0] + 1, agent_pos[1]),
+#             (agent_pos[0], agent_pos[1] + 1),
+#             (agent_pos[0], agent_pos[1] - 1),
+#             (agent_pos[0] - 1, agent_pos[1]),
+#         ]
+#         if goal_pos:
+#             if goal_pos in agent_neighbors:
+#                 self.feedback_message = "Already a neighbor, maybe needs to adjust direction."
+#                 self.action_sequence += align_direction_to_target(agent_pos, goal_pos, agent_dir)
+#                 self.action_sequence.append(ACTION_TO_IDX["pick_up"])
+#             else:
+#                 path_to_goal = astar_pathfinding(grid[:, :, 0], agent_pos, goal_pos, agent_dir)
+#                 if path_to_goal:
+#                     self.action_sequence = prepare_action_sequence(path_to_goal, agent_dir, goal_pos)
+#                     if len(path_to_goal) >= 2:
+#                         last_position = path_to_goal[-1]
+#                         second_last_position = path_to_goal[-2]
+#                         move_vector = (second_last_position[0] - last_position[0], second_last_position[1] - last_position[1])
+#                     else:
+#                         move_vector = (0, 0)
+#                     current_direction = direction_map.get(move_vector)
+#                     if current_direction is None:
+#                         raise ValueError(f"Invalid move vector {move_vector}. Cannot determine direction from start={agent_pos} to end={goal_pos}.")
+#                     #self.action_sequence += align_direction_to_target(last_position, goal_pos, current_direction)
+#                     self.action_sequence.append(ACTION_TO_IDX["pick_up"])
+#                 else:
+#                     self.feedback_message = "Cannot determine path to goal."
+#                     self.action_sequence = []
+#         else:
+#             self.feedback_message = "Goal position not found."
+
+#     def update_obs(self, new_obs):
+#         self.obs = new_obs
+
+#     def update(self):
+#         global current_action
+#         if self.debug:
+#             print(f"{self.name} is active.")
+#             print(self.action_sequence)
+#         if self.current_action_index < len(self.action_sequence):
+#             current_action['action'] = self.action_sequence[self.current_action_index]
+#             self.current_action_index += 1
+#             return py_trees.common.Status.RUNNING
+#         else:
+#             if self.current_action_index == len(self.action_sequence):
+#                 self.current_action_index = 0
+#                 return py_trees.common.Status.SUCCESS
+#             else:
+#                 self.current_action_index = 0
+#                 return py_trees.common.Status.FAILURE
+
+class PickUpObstacle(py_trees.behaviour.Behaviour):
+    def __init__(self, name, env, obs, goal_object="ball", goal_color="green", debug=False):
+        super(PickUpObstacle, self).__init__(name)
+        self.env = env
+        self.obs = obs
+        self.goal_object = goal_object
+        self.goal_color = goal_color
+        self.action_sequence = []
+        self.current_action_index = 0
+        self.debug = debug
+
+    def initialise(self):
+        if self.debug:
+            print(f"Initializing {self.name}")
+        grid, agent_dir = extract_grid_and_direction(self.obs)
+        positions = extract_positions(self.obs)
+        agent_pos = positions.get('agent')
+
+        if self.goal_object == "ball":
+            goal_pos = find_ball_position(self.obs, self.goal_color)
+        else:
+            goal_pos = positions.get(self.goal_object)
+
+        if not goal_pos:
+            self.feedback_message = f"Cannot find {self.goal_object} position."
+            return
+
+        self.action_sequence = align_direction_to_target((agent_pos[0], agent_pos[1]), goal_pos, agent_dir)
+        self.action_sequence.append(ACTION_TO_IDX["pick_up"])
+
+    def update_obs(self, new_obs):
+        self.obs = new_obs
+
+    def update(self):
+        global current_action
+        if self.debug:
+            print(f"{self.name} is active.")
+            print(self.action_sequence)
+        if self.current_action_index < len(self.action_sequence):
+            current_action['action'] = self.action_sequence[self.current_action_index]
+            self.current_action_index += 1
+            return py_trees.common.Status.RUNNING
+        else:
+            if self.current_action_index == len(self.action_sequence):
+                self.current_action_index = 0
+                return py_trees.common.Status.SUCCESS
+            else:
+                self.current_action_index = 0
+                return py_trees.common.Status.FAILURE
 
 class PickUpGoal(py_trees.behaviour.Behaviour):
-    def __init__(self, name, env, obs, goal_object="ball", goal_color="green"):
+    def __init__(self, name, env, obs, goal_object="ball", goal_color="green", debug=False):
         super(PickUpGoal, self).__init__(name)
         self.env = env
         self.obs = obs
@@ -162,9 +325,11 @@ class PickUpGoal(py_trees.behaviour.Behaviour):
         self.goal_color = goal_color
         self.action_sequence = []
         self.current_action_index = 0
+        self.debug = debug
 
     def initialise(self):
-        input("GOAL")
+        if self.debug:
+            print(f"Initializing {self.name}")
         grid, agent_dir = extract_grid_and_direction(self.obs)
         positions = extract_positions(self.obs)
         agent_pos = positions.get('agent')
@@ -181,7 +346,6 @@ class PickUpGoal(py_trees.behaviour.Behaviour):
         if goal_pos == (agent_pos[0], agent_pos[1] + 1):
             self.action_sequence = [1, 1, 4, 0, 0, 3]
         else:
-            self.action_sequence.append(ACTION_TO_IDX["move_forward"])
             self.action_sequence.append(ACTION_TO_IDX["move_forward"])
             if goal_pos == (agent_pos[0], agent_pos[1] + 2):
                 if grid[agent_pos[0] + 1, agent_pos[1] - 1, 0] == 1:
@@ -217,43 +381,34 @@ class PickUpGoal(py_trees.behaviour.Behaviour):
 
     def update(self):
         global current_action
-        if 0 <= self.current_action_index < len(self.action_sequence):
+        if self.debug:
+            print(f"{self.name} is active.")
+            print(self.action_sequence)
+        if self.current_action_index < len(self.action_sequence):
             current_action['action'] = self.action_sequence[self.current_action_index]
             self.current_action_index += 1
-            if self.current_action_index >= len(self.action_sequence):
-                self.current_action_index = 0
-                return py_trees.common.Status.SUCCESS
             return py_trees.common.Status.RUNNING
         else:
-            self.current_action_index = 0
-            return py_trees.common.Status.FAILURE
-
-    def update_obs(self, new_obs):
-        self.obs = new_obs
-
-    def update(self):
-        global current_action
-        if 0 <= self.current_action_index < len(self.action_sequence):
-            current_action['action'] = self.action_sequence[self.current_action_index]
-            self.current_action_index += 1
-            if self.current_action_index >= len(self.action_sequence):
+            if self.current_action_index == len(self.action_sequence):
                 self.current_action_index = 0
                 return py_trees.common.Status.SUCCESS
-            return py_trees.common.Status.RUNNING
-        else:
-            self.current_action_index = 0
-            return py_trees.common.Status.FAILURE
+            else:
+                self.current_action_index = 0
+                return py_trees.common.Status.FAILURE
 
 class EnterRoom(py_trees.behaviour.Behaviour):
-    def __init__(self, name, env, obs):
+    def __init__(self, name, env, obs, debug=False):
         super(EnterRoom, self).__init__(name)
         self.env = env
         self.obs = obs
         self.action_sequence = []
         self.current_action_index = 0
         self.initialized = False  # Flag to check if initialize has been called
+        self.debug = debug
 
     def initialise(self):
+        if self.debug:
+            print(f"Initializing {self.name}")
         if not self.initialized:
             grid, agent_dir = extract_grid_and_direction(self.obs)
             positions = extract_positions(self.obs)
@@ -294,28 +449,35 @@ class EnterRoom(py_trees.behaviour.Behaviour):
 
     def update(self):
         global current_action
+        if self.debug:
+            print(f"{self.name} is active.")
+            print(self.action_sequence)
         if self.current_action_index < len(self.action_sequence):
             current_action['action'] = self.action_sequence[self.current_action_index]
             self.current_action_index += 1
-            if self.current_action_index >= len(self.action_sequence):
+            return py_trees.common.Status.RUNNING
+        else:
+            if self.current_action_index == len(self.action_sequence):
                 self.current_action_index = 0
                 self.initialized = False  # Allow reinitialization for next tick
                 return py_trees.common.Status.SUCCESS
-            return py_trees.common.Status.RUNNING
-        else:
-            self.current_action_index = 0
-            self.initialized = False  # Allow reinitialization for next tick
-            return py_trees.common.Status.FAILURE
+            else:
+                self.current_action_index = 0
+                self.initialized = False  # Allow reinitialization for next tick
+                return py_trees.common.Status.FAILURE
 
 class EnterStep(py_trees.behaviour.Behaviour):
-    def __init__(self, name, env, obs):
+    def __init__(self, name, env, obs, debug=False):
         super(EnterStep, self).__init__(name)
         self.env = env
         self.obs = obs
         self.action_sequence = [ACTION_TO_IDX["move_forward"], ACTION_TO_IDX["move_forward"]]
         self.current_action_index = 0
+        self.debug = debug
 
     def initialise(self):
+        if self.debug:
+            print(f"Initializing {self.name}")
         self.feedback_message = "Moving forward."
         SharedStatus.has_entered_room = False  # Reset status at the start
 
@@ -324,6 +486,9 @@ class EnterStep(py_trees.behaviour.Behaviour):
 
     def update(self):
         global current_action
+        if self.debug:
+            print(f"{self.name} is active.")
+            print(self.action_sequence)
         if self.current_action_index < len(self.action_sequence):
             current_action['action'] = self.action_sequence[self.current_action_index]
             self.current_action_index += 1
@@ -336,15 +501,18 @@ class EnterStep(py_trees.behaviour.Behaviour):
             return py_trees.common.Status.FAILURE
 
 class OpenDoors(py_trees.behaviour.Behaviour):
-    def __init__(self, name, env, obs):
+    def __init__(self, name, env, obs, debug=False):
         super(OpenDoors, self).__init__(name)
         self.env = env
         self.obs = obs
         self.action_sequence = []
         self.current_action_index = 0
         self.closed_doors = []
+        self.debug = debug
 
     def initialise(self):
+        if self.debug:
+            print(f"Initializing {self.name}")
         grid, agent_dir = extract_grid_and_direction(self.obs)
         positions = extract_positions(self.obs)
         agent_pos = positions.get('agent')
@@ -370,7 +538,9 @@ class OpenDoors(py_trees.behaviour.Behaviour):
 
     def update(self):
         global current_action
-
+        if self.debug:
+            print(f"{self.name} is active.")
+            print(self.action_sequence)
         if not self.action_sequence and self.closed_doors:
             grid, agent_dir = extract_grid_and_direction(self.obs)
             positions = extract_positions(self.obs)
@@ -401,9 +571,6 @@ class OpenDoors(py_trees.behaviour.Behaviour):
         if self.current_action_index < len(self.action_sequence):
             current_action['action'] = self.action_sequence[self.current_action_index]
             self.current_action_index += 1
-            if self.current_action_index >= len(self.action_sequence):
-                self.action_sequence = []
-                self.current_action_index = 0
             return py_trees.common.Status.RUNNING
         elif not self.closed_doors:
             self.feedback_message = "All doors are open."
@@ -412,14 +579,17 @@ class OpenDoors(py_trees.behaviour.Behaviour):
             return py_trees.common.Status.RUNNING
 
 class PickUpKey(py_trees.behaviour.Behaviour):
-    def __init__(self, name, env, obs):
+    def __init__(self, name, env, obs, debug=False):
         super(PickUpKey, self).__init__(name)
         self.env = env
         self.obs = obs
         self.action_sequence = []
         self.current_action_index = 0
+        self.debug = debug
 
     def initialise(self):
+        if self.debug:
+            print(f"Initializing {self.name}")
         grid, agent_dir = extract_grid_and_direction(self.obs)
         positions = extract_positions(self.obs)
         key_pos = positions.get('key')
@@ -457,27 +627,34 @@ class PickUpKey(py_trees.behaviour.Behaviour):
 
     def update(self):
         global current_action
+        if self.debug:
+            print(f"{self.name} is active.")
+            print(self.action_sequence)
         if self.current_action_index < len(self.action_sequence):
             current_action['action'] = self.action_sequence[self.current_action_index]
 
             self.current_action_index += 1
-            if self.current_action_index >= len(self.action_sequence):
-                self.current_action_index = 0
-                return py_trees.common.Status.SUCCESS
             return py_trees.common.Status.RUNNING
         else:
-            self.current_action_index = 0
-            return py_trees.common.Status.FAILURE
+            if self.current_action_index == len(self.action_sequence):
+                self.current_action_index = 0
+                return py_trees.common.Status.SUCCESS
+            else:
+                self.current_action_index = 0
+                return py_trees.common.Status.FAILURE
 
 class PickUpKeyBox(py_trees.behaviour.Behaviour):
-    def __init__(self, name, env, obs):
+    def __init__(self, name, env, obs, debug=False):
         super(PickUpKeyBox, self).__init__(name)
         self.env = env
         self.obs = obs
         self.action_sequence = []
         self.current_action_index = 0
+        self.debug = debug
 
     def initialise(self):
+        if self.debug:
+            print(f"Initializing {self.name}")
         grid, agent_dir = extract_grid_and_direction(self.obs)
         positions = extract_positions(self.obs)
         box_pos = positions.get('box')
@@ -541,32 +718,154 @@ class PickUpKeyBox(py_trees.behaviour.Behaviour):
 
     def update(self):
         global current_action
-        if self.current_action_index <= len(self.action_sequence):
+        if self.debug:
+            print(f"{self.name} is active.")
+            print(self.action_sequence)
+        if self.current_action_index < len(self.action_sequence):
             current_action['action'] = self.action_sequence[self.current_action_index]
             self.current_action_index += 1
-            if self.current_action_index > len(self.action_sequence):
-                self.current_action_index = 0
-                return py_trees.common.Status.SUCCESS
             return py_trees.common.Status.RUNNING
         else:
-            self.current_action_index = 0
-            return py_trees.common.Status.FAILURE
+            if self.current_action_index == len(self.action_sequence):
+                self.current_action_index = 0
+                return py_trees.common.Status.SUCCESS
+            else:
+                self.current_action_index = 0
+                return py_trees.common.Status.FAILURE
 
-class ClearPath(py_trees.behaviour.Behaviour):
-    def __init__(self, name, env, obs):
-        super(ClearPath, self).__init__(name)
+class DropKey(py_trees.behaviour.Behaviour):
+    def __init__(self, name, env, obs, goal_object="ball", goal_color=None, debug=False):
+        super(DropKey, self).__init__(name)
+        self.env = env
+        self.obs = obs
+        self.goal_object = goal_object
+        self.goal_color = goal_color
+        self.path_to_ball = []
+        self.path_to_drop = []
+        self.action_sequence = []
+        self.current_action_index = 0
+        self.debug = debug
+
+    def initialise(self):
+        if self.debug:
+            print(f"Initializing {self.name}")
+        grid, agent_dir = extract_grid_and_direction(self.obs)
+        positions = extract_positions(self.obs)
+        agent_pos = positions.get('agent')
+        door_pos = positions.get('door')
+
+        if self.goal_object == "ball" and self.goal_color:
+            goal_pos = find_ball_position(self.obs, self.goal_color)
+        else:
+            goal_pos = positions.get(self.goal_object)
+
+        if not goal_pos:
+            self.feedback_message = f"Cannot find {self.goal_object} position."
+            return
+
+        if goal_pos == (agent_pos[0], agent_pos[1] + 1):
+            self.action_sequence = [1, 1, 4, 0, 0, 3]
+        else:
+            self.action_sequence.append(ACTION_TO_IDX["move_forward"])
+            if goal_pos == (agent_pos[0], agent_pos[1] + 2):
+                if grid[agent_pos[0] + 1, agent_pos[1] - 1, 0] == 1:
+                    self.action_sequence += [1, 4, 0, 3]
+                else:
+                    self.drop_pos = (agent_pos[0] + 1, agent_pos[1] + 1)
+                    self.action_sequence += [0, 4, 1, 3]
+            self.action_sequence.append(ACTION_TO_IDX["drop"])
+            
+    def update_obs(self, new_obs):
+        self.obs = new_obs
+
+    def update(self):
+        global current_action
+        if self.debug:
+            print(f"{self.name} is active.")
+            print(self.action_sequence)
+        if self.current_action_index < len(self.action_sequence):
+            current_action['action'] = self.action_sequence[self.current_action_index]
+            self.current_action_index += 1
+            return py_trees.common.Status.RUNNING
+        else:
+            if self.current_action_index == len(self.action_sequence):
+                self.current_action_index = 0
+                return py_trees.common.Status.SUCCESS
+            else:
+                self.current_action_index = 0
+                return py_trees.common.Status.FAILURE
+
+class DropObstacle(py_trees.behaviour.Behaviour):
+    def __init__(self, name, env, obs, debug=False):
+        super(DropObstacle, self).__init__(name)
         self.env = env
         self.obs = obs
         self.path_to_ball = []
         self.path_to_drop = []
         self.action_sequence = []
         self.current_action_index = 0
+        self.debug = debug
 
     def initialise(self):
+        if self.debug:
+            print(f"Initializing {self.name}")
         grid, agent_dir = extract_grid_and_direction(self.obs)
         positions = extract_positions(self.obs)
         agent_pos = positions.get('agent')
+        door_pos = positions.get('door')
         ball_pos = find_ball_position(self.obs, 'green')
+
+        if not ball_pos:
+            drop_pos = find_safe_drop_location(grid[:,:,0], door_pos, agent_pos, agent_dir)
+            if drop_pos:
+                self.action_sequence = align_direction_to_target(agent_pos, drop_pos, agent_dir)
+                self.action_sequence.append(ACTION_TO_IDX["drop"])         
+            else:
+                self.action_sequence.append(ACTION_TO_IDX["move_forward"])    
+                self.action_sequence.append(ACTION_TO_IDX["drop"])
+                if agent_dir == 1:
+                    agent_pos = (agent_pos[0]+1, agent_pos[1])
+                    drop_pos = (agent_pos[0]+1, agent_pos[1])
+                else:
+                    agent_pos = (agent_pos[0]-1, agent_pos[1])
+                    drop_pos = (agent_pos[0]-1, agent_pos[1])
+            
+    def update_obs(self, new_obs):
+        self.obs = new_obs
+
+    def update(self):
+        global current_action
+        if self.debug:
+            print(f"{self.name} is active.")
+            print(self.action_sequence)
+        if self.current_action_index < len(self.action_sequence):
+            current_action['action'] = self.action_sequence[self.current_action_index]
+            self.current_action_index += 1
+            return py_trees.common.Status.RUNNING
+        else:
+            if self.current_action_index == len(self.action_sequence):
+                self.current_action_index = 0
+                return py_trees.common.Status.SUCCESS
+            else:
+                self.current_action_index = 0
+                return py_trees.common.Status.FAILURE
+            
+class PickUpKey(py_trees.behaviour.Behaviour):
+    def __init__(self, name, env, obs, debug=False):
+        super(PickUpKey, self).__init__(name)
+        self.env = env
+        self.obs = obs
+        self.action_sequence = []
+        self.current_action_index = 0
+        self.debug = debug
+
+    def initialise(self):
+        if self.debug:
+            print(f"Initializing {self.name}")
+        grid, agent_dir = extract_grid_and_direction(self.obs)
+        positions = extract_positions(self.obs)
+        key_pos = positions.get('key')
+        agent_pos = positions.get('agent')
 
         agent_neighbors = [
             (agent_pos[0], agent_pos[1] - 1), 
@@ -574,34 +873,176 @@ class ClearPath(py_trees.behaviour.Behaviour):
             (agent_pos[0], agent_pos[1] + 1), 
             (agent_pos[0] - 1, agent_pos[1]), 
         ]
-        if ball_pos:
-            if ball_pos in agent_neighbors:
-                self.feedback_message = "Already a neighbor, maybe needs to adjust direction."
-                self.action_sequence = align_direction_to_target(agent_pos, ball_pos, agent_dir)
+        if key_pos:
+            if key_pos in agent_neighbors:
+                self.action_sequence += align_direction_to_target(agent_pos, key_pos, agent_dir)
                 self.action_sequence.append(ACTION_TO_IDX["pick_up"]) 
             else:
-                path_to_ball = find_path_to_adjacent(grid[:,:,0], agent_pos, ball_pos, agent_dir)
-                if path_to_ball:
-                    self.action_sequence = prepare_action_sequence(path_to_ball, agent_dir, find_ball_position(self.obs, 'green'))
+                path_to_key = find_path_to_adjacent(grid[:,:,0], agent_pos, key_pos, agent_dir)
+                if path_to_key:
+                    self.action_sequence += prepare_action_sequence(path_to_key, 0, key_pos)
                     self.action_sequence.append(ACTION_TO_IDX["pick_up"]) 
                 else:
                     self.feedback_message = "Cannot determine path."
                     self.action_sequence = []
         else:
             self.feedback_message = "Cannot determine door or ball position."
-            
+
     def update_obs(self, new_obs):
         self.obs = new_obs
 
     def update(self):
         global current_action
-        if self.current_action_index <= len(self.action_sequence):
+        if self.debug:
+            print(f"{self.name} is active.")
+            print(self.action_sequence)
+        if self.current_action_index < len(self.action_sequence):
             current_action['action'] = self.action_sequence[self.current_action_index]
             self.current_action_index += 1
-            if self.current_action_index > len(self.action_sequence):
-                self.current_action_index = 0
-                return py_trees.common.Status.SUCCESS
             return py_trees.common.Status.RUNNING
         else:
-            self.current_action_index = 0
-            return py_trees.common.Status.FAILURE
+            if self.current_action_index == len(self.action_sequence):
+                self.current_action_index = 0
+                return py_trees.common.Status.SUCCESS
+            else:
+                self.current_action_index = 0
+                return py_trees.common.Status.FAILURE
+
+class PickUpKeyBox(py_trees.behaviour.Behaviour):
+    def __init__(self, name, env, obs, debug=False):
+        super(PickUpKeyBox, self).__init__(name)
+        self.env = env
+        self.obs = obs
+        self.action_sequence = []
+        self.current_action_index = 0
+        self.debug = debug
+
+    def initialise(self):
+        if self.debug:
+            print(f"Initializing {self.name}")
+        grid, agent_dir = extract_grid_and_direction(self.obs)
+        positions = extract_positions(self.obs)
+        box_pos = positions.get('box')
+        agent_pos = positions.get('agent')
+        ball_pos = find_ball_position(self.obs, 'green')
+        door_pos = positions.get('door')
+
+        agent_neighbors = [
+            (agent_pos[0], agent_pos[1] - 1), 
+            (agent_pos[0] + 1, agent_pos[1]), 
+            (agent_pos[0], agent_pos[1] + 1), 
+            (agent_pos[0] - 1, agent_pos[1]), 
+        ]
+        if not ball_pos:
+            drop_pos = find_safe_drop_location(grid[:,:,0], door_pos, agent_pos, agent_dir)
+            if drop_pos:
+                self.action_sequence = align_direction_to_target(agent_pos, drop_pos, agent_dir)
+                self.action_sequence.append(ACTION_TO_IDX["drop"])         
+            else:
+                self.action_sequence.append(ACTION_TO_IDX["move_forward"])    
+                self.action_sequence.append(ACTION_TO_IDX["drop"])
+                if agent_dir == 1:
+                    agent_pos = (agent_pos[0]+1, agent_pos[1])
+                    drop_pos = (agent_pos[0]+1, agent_pos[1])
+                else:
+                    agent_pos = (agent_pos[0]-1, agent_pos[1])
+                    drop_pos = (agent_pos[0]-1, agent_pos[1])
+        else:
+            drop_pos = ball_pos
+        if box_pos:
+            grid[:,:,0][drop_pos[1],drop_pos[0]]=6
+            if box_pos in agent_neighbors:
+                self.feedback_message = "Already a neighbor, maybe needs to adjust direction."
+                move_vector = (drop_pos[0] - agent_pos[0], drop_pos[1] - agent_pos[1])
+                current_direction = direction_map.get(move_vector)
+                self.action_sequence += align_direction_to_target(agent_pos, box_pos, current_direction)
+                self.action_sequence.append(ACTION_TO_IDX["open"]) 
+                self.action_sequence.append(ACTION_TO_IDX["pick_up"]) 
+            else:
+                path_to_box = find_path_to_adjacent(grid[:,:,0], agent_pos, box_pos, agent_dir)
+                if path_to_box:
+                    move_vector = (drop_pos[0] - agent_pos[0], drop_pos[1] - agent_pos[1])
+                    current_direction = direction_map.get(move_vector)
+                    self.action_sequence += prepare_action_sequence(path_to_box, current_direction, box_pos)
+                    self.action_sequence.append(ACTION_TO_IDX["open"]) 
+                    self.action_sequence.append(ACTION_TO_IDX["pick_up"]) 
+                else:
+                    self.feedback_message = "Cannot determine path."
+                    self.action_sequence = []
+        else:
+            self.feedback_message = "Cannot determine door or ball position."
+
+    def update_obs(self, new_obs):
+        self.obs = new_obs
+
+    def update(self):
+        global current_action
+        if self.debug:
+            print(f"{self.name} is active.")
+            print(self.action_sequence)
+        if self.current_action_index < len(self.action_sequence):
+            current_action['action'] = self.action_sequence[self.current_action_index]
+            self.current_action_index += 1
+            return py_trees.common.Status.RUNNING
+        else:
+            if self.current_action_index == len(self.action_sequence):
+                self.current_action_index = 0
+                return py_trees.common.Status.SUCCESS
+            else:
+                self.current_action_index = 0
+                return py_trees.common.Status.FAILURE
+
+class DropObstacle(py_trees.behaviour.Behaviour):
+    def __init__(self, name, env, obs, debug=False):
+        super(DropObstacle, self).__init__(name)
+        self.env = env
+        self.obs = obs
+        self.path_to_ball = []
+        self.path_to_drop = []
+        self.action_sequence = []
+        self.current_action_index = 0
+        self.debug = debug
+
+    def initialise(self):
+        if self.debug:
+            print(f"Initializing {self.name}")
+        grid, agent_dir = extract_grid_and_direction(self.obs)
+        positions = extract_positions(self.obs)
+        agent_pos = positions.get('agent')
+        door_pos = positions.get('door')
+        ball_pos = find_ball_position(self.obs, 'green')
+
+        if not ball_pos:
+            drop_pos = find_safe_drop_location(grid[:,:,0], door_pos, agent_pos, agent_dir)
+            if drop_pos:
+                self.action_sequence = align_direction_to_target(agent_pos, drop_pos, agent_dir)
+                self.action_sequence.append(ACTION_TO_IDX["drop"])         
+            else:
+                self.action_sequence.append(ACTION_TO_IDX["move_forward"])    
+                self.action_sequence.append(ACTION_TO_IDX["drop"])
+                if agent_dir == 1:
+                    agent_pos = (agent_pos[0]+1, agent_pos[1])
+                    drop_pos = (agent_pos[0]+1, agent_pos[1])
+                else:
+                    agent_pos = (agent_pos[0]-1, agent_pos[1])
+                    drop_pos = (agent_pos[0]-1, agent_pos[1])
+
+    def update_obs(self, new_obs):
+        self.obs = new_obs
+
+    def update(self):
+        global current_action
+        if self.debug:
+            print(f"{self.name} is active.")
+            print(self.action_sequence)
+        if self.current_action_index < len(self.action_sequence):
+            current_action['action'] = self.action_sequence[self.current_action_index]
+            self.current_action_index += 1
+            return py_trees.common.Status.RUNNING
+        else:
+            if self.current_action_index == len(self.action_sequence):
+                self.current_action_index = 0
+                return py_trees.common.Status.SUCCESS
+            else:
+                self.current_action_index = 0
+                return py_trees.common.Status.FAILURE

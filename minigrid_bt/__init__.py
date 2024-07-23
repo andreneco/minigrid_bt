@@ -1,6 +1,6 @@
 # minigrid_bt/__init__.py
 
-from .behaviors import PickUpGoal, EnterRoom, PickUpKey, ClearPath
+from .behaviors import PickUpGoal, EnterRoom, PickUpKey, DropObstacle
 from .conditions import HasKey, IsInsideRoom, IsPathClear
 from .utils import (
     extract_grid_and_direction, extract_positions,
