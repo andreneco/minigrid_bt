@@ -2,6 +2,7 @@
 
 from stable_baselines3.common.policies import BasePolicy
 from minigrid_bt.utils import update_tree_obs, ReconstructObsWrapper, current_action
+import py_trees
 
 class BehaviorTreePolicy(BasePolicy):
     def __init__(self, observation_space, action_space, env, image_shape, tree_creation_func, reconstruct_obs_wrapper_class, features_extractor=None, *args, **kwargs):
@@ -19,6 +20,7 @@ class BehaviorTreePolicy(BasePolicy):
         self.reconstruct_obs_wrapper = self.reconstruct_obs_wrapper_class(self.image_shape)
         self.obs = self.reconstruct_obs_wrapper.reconstruct_observation(self.obs[0])
         self.tree = self.tree_creation_func(self.env, self.obs)
+        py_trees.display.render_dot_tree(self.tree.root, target_directory="/tmp")
 
     def __getstate__(self):
         state = self.__dict__.copy()

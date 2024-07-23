@@ -67,15 +67,15 @@ def calculate_turn_direction(current_direction, target_direction):
     normalized_diff = direction_diff % 4
     return normalized_diff
 
-def find_path_to_adjacent(grid, start, target):
-    path = astar_pathfinding(grid, start, target)
+def find_path_to_adjacent(grid, start, target, current_direction):
+    path = astar_pathfinding(grid, start, target, current_direction)
     if path:
         return path
     return []
 
-def astar_pathfinding(grid, start, goal):
-    def heuristic(a, b):
-        return abs(a[0] - b[0]) + abs(a[1] - b[1])
+def astar_pathfinding(grid, start, goal, initial_direction):
+    def heuristic(a, b, direction):
+        return abs(a[0] - b[0]) + abs(a[1] - b[1]) + (direction != initial_direction)
 
     def goal_reached(current, goal):
         for dx, dy in [(0, 1), (1, 0), (0, -1), (-1, 0)]:
@@ -84,36 +84,40 @@ def astar_pathfinding(grid, start, goal):
                 return True
         return False
 
-    def get_neighbors(node):
+    def get_neighbors(node, direction):
         neighbors = []
-        for dx, dy in [(0, 1), (1, 0), (0, -1), (-1, 0)]:
+        directions = [(0, 1), (1, 0), (0, -1), (-1, 0)]
+        
+        for i, (dx, dy) in enumerate(directions):
             x, y = node[0] + dx, node[1] + dy
             if 0 <= x < grid.shape[1] and 0 <= y < grid.shape[0] and grid[y][x] == 1:
-                neighbors.append((x, y))
+                cost = 1 if i == direction else 2
+                neighbors.append(((x, y), i, cost))
+        
         return neighbors
 
     open_set = []
-    heapq.heappush(open_set, (0 + heuristic(start, goal), 0, start))
+    heapq.heappush(open_set, (0 + heuristic(start, goal, initial_direction), 0, start, initial_direction))
     came_from = {}
     gscore = {start: 0}
 
     while open_set:
-        _, g, current = heapq.heappop(open_set)
+        _, g, current, direction = heapq.heappop(open_set)
         if goal_reached(current, goal):
             path = [current]
             while current in came_from:
-                current = came_from[current]
+                current = came_from[current][0]
                 path.append(current)
             path.reverse()
             return path
 
-        for neighbor in get_neighbors(current):
-            tentative_g_score = g + 1
+        for neighbor, new_direction, cost in get_neighbors(current, direction):
+            tentative_g_score = g + cost
             if neighbor not in gscore or tentative_g_score < gscore[neighbor]:
-                came_from[neighbor] = current
+                came_from[neighbor] = (current, new_direction)
                 gscore[neighbor] = tentative_g_score
-                f_score = tentative_g_score + heuristic(neighbor, goal)
-                heapq.heappush(open_set, (f_score, tentative_g_score, neighbor))
+                f_score = tentative_g_score + heuristic(neighbor, goal, new_direction)
+                heapq.heappush(open_set, (f_score, tentative_g_score, neighbor, new_direction))
 
     return []
 
