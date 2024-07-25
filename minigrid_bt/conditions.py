@@ -1,10 +1,9 @@
 import py_trees
-from minigrid_bt.utils import find_ball_position, extract_positions, astar_pathfinding, extract_grid_and_direction
-from minigrid_bt.shared_status import SharedStatus  # Import SharedStatus from the separate module
+from minigrid_bt.utils import extract_door_positions, extract_multiple_positions, find_ball_position, extract_positions, astar_pathfinding, extract_grid_and_direction, find_door_position
 
-class HasKey(py_trees.behaviour.Behaviour):
+class HasKeyBox(py_trees.behaviour.Behaviour):
     def __init__(self, name="HasKey", env=None, obs=None, debug=False):
-        super(HasKey, self).__init__(name)
+        super(HasKeyBox, self).__init__(name)
         self.env = env
         self.obs = obs
         self.debug = debug
@@ -29,6 +28,110 @@ class HasKey(py_trees.behaviour.Behaviour):
             return py_trees.common.Status.FAILURE
         else:
             self.feedback_message = "Key is visible, agent does not have the key."
+            if self.debug:
+                print(self.feedback_message)
+            return py_trees.common.Status.FAILURE
+        
+class HasKey(py_trees.behaviour.Behaviour):
+    def __init__(self, name="HasKey", env=None, obs=None, debug=False):
+        super(HasKey, self).__init__(name)
+        self.env = env
+        self.obs = obs
+        self.debug = debug
+
+    def update_obs(self, new_obs):
+        self.obs = new_obs
+
+    def update(self):
+        positions = extract_positions(self.obs)
+        key_pos = positions.get('key', 0)
+        
+        if key_pos == 0:
+            self.feedback_message = "Key is not visible, assuming the agent has the key."
+            if self.debug:
+                print(self.feedback_message)
+            return py_trees.common.Status.SUCCESS
+        else:
+            self.feedback_message = "Key is visible, agent does not have the key."
+            if self.debug:
+                print(self.feedback_message)
+            return py_trees.common.Status.FAILURE        
+
+class HasObstacle(py_trees.behaviour.Behaviour):
+    def __init__(self, name="HasObstacle", env=None, obs=None, object_type="ball", object_color=None, debug=False):
+        super(HasObstacle, self).__init__(name)
+        self.env = env
+        self.obs = obs
+        self.goal_object = object_type
+        self.goal_color = object_color
+        self.debug = debug
+
+    def update_obs(self, new_obs):
+        self.obs = new_obs
+
+    def update(self):
+        if self.goal_object == "ball":
+            if self.goal_color is None:
+                # Check for the ball's position regardless of color
+                object_pos = find_ball_position_any_color(self.obs)
+            else:
+                object_pos = find_ball_position(self.obs, self.goal_color)
+        else:
+            positions = extract_positions(self.obs)
+            object_pos = positions.get(self.goal_object, None)
+
+        if object_pos is None:
+            if self.goal_color:
+                feedback = f"{self.goal_color.capitalize()} {self.goal_object} is not visible, assuming the agent has the obstacle."
+            else:
+                feedback = f"{self.goal_object} is not visible, assuming the agent has the obstacle."
+            self.feedback_message = feedback
+            if self.debug:
+                print(self.feedback_message)
+            return py_trees.common.Status.SUCCESS
+        else:
+            if self.goal_color:
+                feedback = f"{self.goal_color.capitalize()} {self.goal_object} is visible, agent does not have the obstacle."
+            else:
+                feedback = f"{self.goal_object} is visible, agent does not have the obstacle."
+            self.feedback_message = feedback
+            if self.debug:
+                print(self.feedback_message)
+            return py_trees.common.Status.FAILURE
+
+def find_ball_position_any_color(obs):
+    positions = extract_positions(obs)
+    for key in positions:
+        if key.startswith('ball'):
+            return positions[key]
+    return None
+
+class AllDoorsUnlocked(py_trees.behaviour.Behaviour):
+    def __init__(self, name="AllDoorsUnlocked", env=None, obs=None, debug=False):
+        super(AllDoorsUnlocked, self).__init__(name)
+        self.env = env
+        self.obs = obs
+        self.debug = debug
+        
+    def update_obs(self, new_obs):
+        self.obs = new_obs
+
+    def update(self):
+        door_positions = extract_door_positions(self.obs)
+        all_unlocked = True
+        for pos in door_positions:
+            x, y, color, state = pos
+            if state == 2:  # Assuming 2 represents a locked door
+                all_unlocked = False
+                break
+
+        if all_unlocked:
+            self.feedback_message = "All doors are unlocked."
+            if self.debug:
+                print(self.feedback_message)
+            return py_trees.common.Status.SUCCESS
+        else:
+            self.feedback_message = "Some doors are locked."
             if self.debug:
                 print(self.feedback_message)
             return py_trees.common.Status.FAILURE
@@ -105,6 +208,45 @@ class IsNearObject(py_trees.behaviour.Behaviour):
                 print(self.feedback_message)
             return py_trees.common.Status.FAILURE
 
+class DoorOpen(py_trees.behaviour.Behaviour):
+    def __init__(self, name="AnyDoorOpen", env=None, obs=None, door_color="red", debug=False):
+        super(DoorOpen, self).__init__(name)
+        self.env = env
+        self.obs = obs
+        self.door_color = door_color
+        self.debug = debug
+
+    def update_obs(self, new_obs):
+        self.obs = new_obs
+
+    def update(self):
+        grid, agent_dir = extract_grid_and_direction(self.obs)
+        door_position = find_door_position(self.obs, self.door_color)
+
+        if not door_position:
+            self.feedback_message = f"No doors of color {self.door_color} found."
+            if self.debug:
+                print(self.feedback_message)
+            return py_trees.common.Status.FAILURE
+
+        any_open = False
+        x, y = int(door_position[0]), int(door_position[1])
+        door_status = grid[y, x, 2]
+        if door_status == 0:  # Assuming 0 represents an open door
+            any_open = True
+
+        if any_open:
+            self.feedback_message = f"At least one {self.door_color} door is open."
+            if self.debug:
+                print(self.feedback_message)
+            return py_trees.common.Status.SUCCESS
+        else:
+            self.feedback_message = f"No {self.door_color} doors are open."
+            if self.debug:
+                print(self.feedback_message)
+            return py_trees.common.Status.FAILURE
+
+
 class AllDoorsOpen(py_trees.behaviour.Behaviour):
     def __init__(self, name="AllDoorsOpen", env=None, obs=None, debug=False):
         super(AllDoorsOpen, self).__init__(name)
@@ -117,16 +259,24 @@ class AllDoorsOpen(py_trees.behaviour.Behaviour):
 
     def update(self):
         grid, agent_dir = extract_grid_and_direction(self.obs)
-        positions = extract_positions(self.obs)
+        positions = extract_multiple_positions(self.obs)
         door_positions = positions.get('door', [])
+
+        # Ensure door_positions is a list of tuples
+        if not isinstance(door_positions, list):
+            door_positions = [door_positions]
 
         all_open = True
         for pos in door_positions:
-            door_pos = (pos[0], pos[1])
-            door_status = grid[door_pos[1], door_pos[0], 2]
-            if door_status == 1:  # Assuming 1 represents a closed door
-                all_open = False
-                break
+            # Convert np.int64 to standard Python int
+            if isinstance(pos, tuple) and len(pos) == 2:
+                x, y = int(pos[0]), int(pos[1])
+                door_status = grid[y, x, 2]
+                if door_status == 2 or door_status == 1:  # Assuming 1 represents a closed door
+                    all_open = False
+                    break
+            else:
+                print(f"Invalid position: {pos}")
 
         if all_open:
             self.feedback_message = "All doors are open."
@@ -137,23 +287,6 @@ class AllDoorsOpen(py_trees.behaviour.Behaviour):
             self.feedback_message = "Not all doors are open."
             if self.debug:
                 print(self.feedback_message)
-            return py_trees.common.Status.FAILURE
-        
-class InFinalRoom(py_trees.behaviour.Behaviour):
-    def __init__(self, name, env, obs, debug=False):
-        super(InFinalRoom, self).__init__(name)
-        self.env = env
-        self.obs = obs
-        self.debug = debug
-
-    def update(self):
-        if SharedStatus.has_entered_room:
-            if self.debug:
-                print("Agent has entered the final room.")
-            return py_trees.common.Status.SUCCESS
-        else:
-            if self.debug:
-                print("Agent has not entered the final room.")
             return py_trees.common.Status.FAILURE
 
 class IsPathClear(py_trees.behaviour.Behaviour):

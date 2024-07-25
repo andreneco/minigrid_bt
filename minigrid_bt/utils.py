@@ -37,6 +37,16 @@ def extract_positions(obs):
             positions[object_name] = (x[0], y[0])
     return positions
 
+def extract_multiple_positions(obs):
+    image = obs['image'] if 'image' in obs else obs[0]['image']
+    positions = {}
+    for object_name, object_idx in OBJECT_TO_IDX.items():
+        mask = image[:, :, 0] == object_idx
+        y, x = np.where(mask)
+        if y.size > 0:
+            positions[object_name] = list(zip(x, y))  # Store all positions as list of tuples
+    return positions
+
 def align_direction_to_target(current_position, target_position, current_direction):
     goal_vector = (target_position[0] - current_position[0], target_position[1] - current_position[1])
 
@@ -73,6 +83,25 @@ def find_path_to_adjacent(grid, start, target, current_direction):
         return path
     return []
 
+def find_path_to_adjacent_doors(grid, start, target, current_direction):
+    path = astar_pathfinding_doors(grid, start, target, current_direction)
+    if path:
+        return path
+    return []
+
+def find_door_position(obs, color):
+    positions = extract_multiple_positions(obs)
+    color_idx = COLOR_TO_IDX[color]
+    image = obs['image'] if 'image' in obs else obs[0]['image']
+    
+    for key, values in positions.items():
+        if key == 'door':
+            for pos in values:
+                x, y = pos
+                if image[y, x, 1] == color_idx:  # Check the color channel
+                    return (np.int64(x), np.int64(y))
+    return None
+
 def astar_pathfinding(grid, start, goal, initial_direction):
     def heuristic(a, b, direction):
         return abs(a[0] - b[0]) + abs(a[1] - b[1]) + (direction != initial_direction)
@@ -100,6 +129,57 @@ def astar_pathfinding(grid, start, goal, initial_direction):
     heapq.heappush(open_set, (0 + heuristic(start, goal, initial_direction), 0, start, initial_direction))
     came_from = {}
     gscore = {start: 0}
+
+    while open_set:
+        _, g, current, direction = heapq.heappop(open_set)
+        if goal_reached(current, goal):
+            path = [current]
+            while current in came_from:
+                current = came_from[current][0]
+                path.append(current)
+            path.reverse()
+            return path
+
+        for neighbor, new_direction, cost in get_neighbors(current, direction):
+            tentative_g_score = g + cost
+            if neighbor not in gscore or tentative_g_score < gscore[neighbor]:
+                came_from[neighbor] = (current, new_direction)
+                gscore[neighbor] = tentative_g_score
+                f_score = tentative_g_score + heuristic(neighbor, goal, new_direction)
+                heapq.heappush(open_set, (f_score, tentative_g_score, neighbor, new_direction))
+
+    return []
+
+def astar_pathfinding_doors(grid, start, goal, initial_direction):
+    def heuristic(a, b, direction):
+        return abs(a[0] - b[0]) + abs(a[1] - b[1]) + (direction != initial_direction)
+
+    def goal_reached(current, goal):
+        for dx, dy in [(0, 1), (1, 0), (0, -1), (-1, 0)]:
+            adj = (goal[0] + dx, goal[1] + dy)
+            if current[:2] == adj and (grid[adj[1], adj[0], 0] == 1 or (grid[adj[1], adj[0], 0] == 4 and grid[adj[1], adj[0], 2] in [0, 1])):
+                return True
+        return False
+
+    def get_neighbors(node, direction):
+        neighbors = []
+        directions = [(0, 1), (1, 0), (0, -1), (-1, 0)]
+        
+        for i, (dx, dy) in enumerate(directions):
+            x, y = node[0] + dx, node[1] + dy
+            if 0 <= x < grid.shape[1] and 0 <= y < grid.shape[0]:
+                if grid[y, x, 0] == 1 or (grid[y, x, 0] == 4 and grid[y, x, 2] in [0, 1]):
+                    cost = 1 if i == direction else 2
+                    is_door = grid[y, x, 0] == 4
+                    door_state = grid[y, x, 2] if is_door else None
+                    neighbors.append(((x, y, is_door, door_state), i, cost))
+        
+        return neighbors
+
+    open_set = []
+    heapq.heappush(open_set, (0 + heuristic(start, goal, initial_direction), 0, (start[0], start[1], False, None), initial_direction))
+    came_from = {}
+    gscore = {(start[0], start[1], False, None): 0}
 
     while open_set:
         _, g, current, direction = heapq.heappop(open_set)
@@ -167,6 +247,28 @@ def astar_pathfinding_to_goal(grid, start, goal, current_direction):
     print("No path found")  # Debug statement
     return []
 
+def find_any_ball_position(obs):
+    positions = extract_positions(obs)
+    return positions.get('ball')
+
+def extract_door_positions(obs):
+    image = obs['image'] if 'image' in obs else obs[0]['image']
+    door_positions = []
+    door_idx = OBJECT_TO_IDX['door']
+    mask = image[:, :, 0] == door_idx
+    y, x = np.where(mask)
+    if y.size > 0:
+        door_positions = list(zip(x, y, image[y, x, 1], image[y, x, 2]))  # Store all positions as list of tuples with color and state
+    return door_positions
+
+def find_locked_door_position(obs):
+    door_positions = extract_door_positions(obs)
+    for pos in door_positions:
+        x, y, door_color, door_state = pos
+        if door_state == 2:  # Check if door is locked
+            return (x, y, door_color, door_state)
+    return None
+
 def prepare_action_sequence(path, current_direction, goal_pos):
     action_sequence = []
     if path:
@@ -179,6 +281,30 @@ def prepare_action_sequence(path, current_direction, goal_pos):
         if dir_correction:
             action_sequence += dir_correction
     return action_sequence
+
+def prepare_action_sequence_doors(path, current_direction, goal_pos):
+    action_sequence = []
+    if path:
+        for start, end in zip(path[:-1], path[1:]):
+            
+            # Check if end position is a door and add open action if needed
+            if end[2]:
+                dir_correction = align_direction_to_target((start[0], start[1]), (end[0], end[1]), current_direction)
+                if dir_correction:
+                    action_sequence.extend(dir_correction)
+                    current_direction = direction_map.get((end[0] - start[0], end[1] - start[1]))
+                action_sequence.append(ACTION_TO_IDX["open"])
+
+            actions = calculate_actions_to_move((start[0], start[1]), (end[0], end[1]), current_direction)
+            action_sequence.extend(actions)
+            move_vector = (end[0] - start[0], end[1] - start[1])
+            current_direction = direction_map.get(move_vector)
+                
+        dir_correction = align_direction_to_target((path[-1][0], path[-1][1]), goal_pos, current_direction)
+        if dir_correction:
+            action_sequence += dir_correction
+    return action_sequence
+
 
 def calculate_actions_to_move(start, end, current_direction):
     if not (isinstance(start, tuple) and isinstance(end, tuple) and len(start) == 2 and len(end) == 2):
