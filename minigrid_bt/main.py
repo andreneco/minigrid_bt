@@ -1,38 +1,40 @@
-# minigrid_bt/main.py
-
 import py_trees
-from minigrid_bt.behaviors import GoToGoalDoors, OpenLockedDoor, PickUpKeyDoors, OpenDoor, OpenAllDoors, GoNextToGoal, PickUpKeyBox, PickUpGoal, EnterRoom, DropObstacle, GoToGoal, PickUp
-from minigrid_bt.conditions import AllDoorsUnlocked, DoorOpen, HasObstacle, IsNearObject, HasKey, IsPathClear, AllDoorsOpen, HasKeyBox
+from minigrid_bt.behaviors import (
+    GoToGoalDoors, OpenLockedDoor, PickUpKeyDoors, OpenDoor, 
+    OpenAllDoors, GoNextToGoal, PickUpKeyBox, PickUpGoal, 
+    EnterRoom, DropObstacle, GoToGoal, PickUp
+)
+from minigrid_bt.conditions import (
+    AllDoorsUnlocked, DoorOpen, HasObstacle, IsNearObject, 
+    HasKey, IsPathClear, AllDoorsOpen, HasKeyBox
+)
 
-# Define the global debug variable
-debug = False
-
-def create_ObstructedMaze_bt(env, obs):
+def create_ObstructedMaze_bt(env, obs, debug=False):
     root = py_trees.composites.Sequence(name="Root sequence", memory=False)
 
-    neighbouring_ball_selector = py_trees.composites.Selector(name="Near obstable selector", memory=False)
+    neighbouring_ball_selector = py_trees.composites.Selector(name="Near obstacle selector", memory=False)
     neighbouring_ball_selector.add_child(IsNearObject(name="Is near obstacle", env=env, obs=obs, object_type='ball', object_color='green', debug=debug))
     neighbouring_ball_selector.add_child(GoNextToGoal(name="Go to obstacle", env=env, obs=obs, goal_object="ball", goal_color="green", debug=debug))
 
-    pickup_obstable_sequence = py_trees.composites.Sequence(name="Clear path sequence", memory=False)
-    pickup_obstable_sequence.add_child(neighbouring_ball_selector)
-    pickup_obstable_sequence.add_child(PickUp(name="Pick up obstacle", env=env, obs=obs, goal_object="ball", goal_color="green", debug=debug))
+    pickup_obstacle_sequence = py_trees.composites.Sequence(name="Clear path sequence", memory=False)
+    pickup_obstacle_sequence.add_child(neighbouring_ball_selector)
+    pickup_obstacle_sequence.add_child(PickUp(name="Pick up obstacle", env=env, obs=obs, goal_object="ball", goal_color="green", debug=debug))
 
     clear_path_selector = py_trees.composites.Selector(name="Clear path selector", memory=False)
     clear_path_selector.add_child(IsPathClear(name="Is path clear", env=env, obs=obs, debug=debug))
-    clear_path_selector.add_child(pickup_obstable_sequence)
+    clear_path_selector.add_child(pickup_obstacle_sequence)
 
     obtain_key_sequence = py_trees.composites.Sequence(name="Pick up key sequence", memory=False)
     obtain_key_sequence.add_child(clear_path_selector)
     obtain_key_sequence.add_child(PickUpKeyBox(name="Pick up key", env=env, obs=obs, debug=debug))
 
-    holding_obstable_selector = py_trees.composites.Selector(name="Near obstable selector", memory=False)
-    holding_obstable_selector.add_child(HasObstacle(name="Picked up obstacle", env=env, obs=obs, object_type='ball', object_color='green', debug=debug))
-    holding_obstable_selector.add_child(obtain_key_sequence)
+    holding_obstacle_selector = py_trees.composites.Selector(name="Near obstacle selector", memory=False)
+    holding_obstacle_selector.add_child(HasObstacle(name="Picked up obstacle", env=env, obs=obs, object_type='ball', object_color='green', debug=debug))
+    holding_obstacle_selector.add_child(obtain_key_sequence)
 
     drop_obstacle_sequence = py_trees.composites.Sequence(name="Pick up key sequence", memory=False)
-    drop_obstacle_sequence.add_child(holding_obstable_selector)
-    drop_obstacle_sequence.add_child(DropObstacle(name="Drop obstable", env=env, obs=obs, debug=debug))
+    drop_obstacle_sequence.add_child(holding_obstacle_selector)
+    drop_obstacle_sequence.add_child(DropObstacle(name="Drop obstacle", env=env, obs=obs, debug=debug))
 
     has_key_selector = py_trees.composites.Selector(name="Has key selector", memory=False)
     has_key_selector.add_child(HasKeyBox(name="Has key", env=env, obs=obs, debug=debug))
@@ -51,21 +53,21 @@ def create_ObstructedMaze_bt(env, obs):
 
     return py_trees.trees.BehaviourTree(root)
 
-def create_Empty_bt(env, obs):
+def create_Empty_bt(env, obs, debug=False):
     root = py_trees.composites.Sequence(name="Root sequence", memory=False)
 
     root.add_child(GoToGoal(name="Go to Goal", env=env, obs=obs, debug=debug))
 
     return py_trees.trees.BehaviourTree(root)
 
-def create_BabyAI_bt(env, obs):
+def create_BabyAI_bt(env, obs, debug=False):
     root = py_trees.composites.Sequence(name="Root sequence", memory=False)
 
     root.add_child(GoNextToGoal(name="Go to Goal", env=env, obs=obs, goal_object="ball", goal_color="red", debug=debug))
 
     return py_trees.trees.BehaviourTree(root)
 
-def create_Unlock_bt(env, obs):
+def create_Unlock_bt(env, obs, debug=False):
     root = py_trees.composites.Sequence(name="Root sequence", memory=False)
 
     has_key_selector = py_trees.composites.Selector(name="Has key selector", memory=False)
@@ -77,7 +79,7 @@ def create_Unlock_bt(env, obs):
 
     return py_trees.trees.BehaviourTree(root)
 
-def create_KeyCorridor_bt(env, obs):
+def create_KeyCorridor_bt(env, obs, debug=False):
     root = py_trees.composites.Sequence(name="Root sequence", memory=False)
 
     has_key_selector = py_trees.composites.Selector(name="Has key selector", memory=False)
@@ -97,7 +99,7 @@ def create_KeyCorridor_bt(env, obs):
 
     return py_trees.trees.BehaviourTree(root)
 
-def create_RedBlueDoors_bt(env, obs):
+def create_RedBlueDoors_bt(env, obs, debug=False):
     root = py_trees.composites.Sequence(name="Root sequence", memory=False)
 
     red_door_open_selector = py_trees.composites.Selector(name="Red door open selector", memory=False)
@@ -109,32 +111,32 @@ def create_RedBlueDoors_bt(env, obs):
 
     return py_trees.trees.BehaviourTree(root)
 
-def create_BlockedUnlockPickup_bt(env, obs):
+def create_BlockedUnlockPickup_bt(env, obs, debug=False):
     root = py_trees.composites.Sequence(name="Root sequence", memory=False)
 
-    neighbouring_ball_selector = py_trees.composites.Selector(name="Near obstable selector", memory=False)
+    neighbouring_ball_selector = py_trees.composites.Selector(name="Near obstacle selector", memory=False)
     neighbouring_ball_selector.add_child(IsNearObject(name="Is near obstacle", env=env, obs=obs, object_type='ball', object_color='grey', debug=debug))
     neighbouring_ball_selector.add_child(GoNextToGoal(name="Go to obstacle", env=env, obs=obs, goal_object="ball", goal_color="grey", debug=debug))
 
-    pickup_obstable_sequence = py_trees.composites.Sequence(name="Clear path sequence", memory=False)
-    pickup_obstable_sequence.add_child(neighbouring_ball_selector)
-    pickup_obstable_sequence.add_child(PickUp(name="Pick up obstacle", env=env, obs=obs, goal_object="ball", goal_color=None, debug=debug))
+    pickup_obstacle_sequence = py_trees.composites.Sequence(name="Clear path sequence", memory=False)
+    pickup_obstacle_sequence.add_child(neighbouring_ball_selector)
+    pickup_obstacle_sequence.add_child(PickUp(name="Pick up obstacle", env=env, obs=obs, goal_object="ball", goal_color=None, debug=debug))
 
     clear_path_selector = py_trees.composites.Selector(name="Clear path selector", memory=False)
     clear_path_selector.add_child(IsPathClear(name="Is path clear", env=env, obs=obs, debug=debug))
-    clear_path_selector.add_child(pickup_obstable_sequence)
+    clear_path_selector.add_child(pickup_obstacle_sequence)
 
     obtain_key_sequence = py_trees.composites.Sequence(name="Pick up key sequence", memory=False)
     obtain_key_sequence.add_child(clear_path_selector)
     obtain_key_sequence.add_child(PickUp(name="Pick up key", env=env, obs=obs, goal_object="key", debug=debug))
 
-    holding_obstable_selector = py_trees.composites.Selector(name="Near obstable selector", memory=False)
-    holding_obstable_selector.add_child(HasObstacle(name="Picked up obstacle", env=env, obs=obs, object_type='ball', object_color=None, debug=debug))
-    holding_obstable_selector.add_child(obtain_key_sequence)
+    holding_obstacle_selector = py_trees.composites.Selector(name="Near obstacle selector", memory=False)
+    holding_obstacle_selector.add_child(HasObstacle(name="Picked up obstacle", env=env, obs=obs, object_type='ball', object_color=None, debug=debug))
+    holding_obstacle_selector.add_child(obtain_key_sequence)
 
     drop_obstacle_sequence = py_trees.composites.Sequence(name="Pick up key sequence", memory=False)
-    drop_obstacle_sequence.add_child(holding_obstable_selector)
-    drop_obstacle_sequence.add_child(DropObstacle(name="Drop obstable", env=env, obs=obs, object_color='grey', debug=debug))
+    drop_obstacle_sequence.add_child(holding_obstacle_selector)
+    drop_obstacle_sequence.add_child(DropObstacle(name="Drop obstacle", env=env, obs=obs, object_color='grey', debug=debug))
 
     has_key_selector = py_trees.composites.Selector(name="Has key selector", memory=False)
     has_key_selector.add_child(HasKey(name="Has key", env=env, obs=obs, debug=debug))
@@ -153,7 +155,7 @@ def create_BlockedUnlockPickup_bt(env, obs):
 
     return py_trees.trees.BehaviourTree(root)
 
-def create_UnlockPickup_bt(env, obs):
+def create_UnlockPickup_bt(env, obs, debug=False):
     root = py_trees.composites.Sequence(name="Root sequence", memory=False)
 
     has_key_selector = py_trees.composites.Selector(name="Has key selector", memory=False)
@@ -173,7 +175,7 @@ def create_UnlockPickup_bt(env, obs):
 
     return py_trees.trees.BehaviourTree(root)
 
-def create_DoorKey_bt(env, obs):
+def create_DoorKey_bt(env, obs, debug=False):
     root = py_trees.composites.Sequence(name="Root sequence", memory=False)
 
     has_key_selector = py_trees.composites.Selector(name="Has key selector", memory=False)
@@ -193,7 +195,7 @@ def create_DoorKey_bt(env, obs):
 
     return py_trees.trees.BehaviourTree(root)
 
-def create_MultiRoom_bt(env, obs):
+def create_MultiRoom_bt(env, obs, debug=False):
     root = py_trees.composites.Sequence(name="Root sequence", memory=False)
 
     open_doors_selector = py_trees.composites.Selector(name="Doors open selector", memory=False)

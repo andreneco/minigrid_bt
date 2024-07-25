@@ -1,7 +1,14 @@
 import py_trees
-from minigrid_bt.utils import extract_door_positions, extract_multiple_positions, find_ball_position, extract_positions, astar_pathfinding, extract_grid_and_direction, find_door_position
+from minigrid_bt.utils import (
+    find_ball_position_any_color, extract_door_positions, extract_multiple_positions, 
+    find_ball_position, extract_positions, astar_pathfinding, extract_grid_and_direction, 
+    find_door_position
+)
 
 class HasKeyBox(py_trees.behaviour.Behaviour):
+    """
+    Condition to check if the agent has a key or if it is inside a box.
+    """
     def __init__(self, name="HasKey", env=None, obs=None, debug=False):
         super(HasKeyBox, self).__init__(name)
         self.env = env
@@ -31,8 +38,11 @@ class HasKeyBox(py_trees.behaviour.Behaviour):
             if self.debug:
                 print(self.feedback_message)
             return py_trees.common.Status.FAILURE
-        
+
 class HasKey(py_trees.behaviour.Behaviour):
+    """
+    Condition to check if the agent has a key.
+    """
     def __init__(self, name="HasKey", env=None, obs=None, debug=False):
         super(HasKey, self).__init__(name)
         self.env = env
@@ -58,6 +68,9 @@ class HasKey(py_trees.behaviour.Behaviour):
             return py_trees.common.Status.FAILURE        
 
 class HasObstacle(py_trees.behaviour.Behaviour):
+    """
+    Condition to check if the agent is carrying a specific obstacle (e.g., a ball).
+    """
     def __init__(self, name="HasObstacle", env=None, obs=None, object_type="ball", object_color=None, debug=False):
         super(HasObstacle, self).__init__(name)
         self.env = env
@@ -99,14 +112,10 @@ class HasObstacle(py_trees.behaviour.Behaviour):
                 print(self.feedback_message)
             return py_trees.common.Status.FAILURE
 
-def find_ball_position_any_color(obs):
-    positions = extract_positions(obs)
-    for key in positions:
-        if key.startswith('ball'):
-            return positions[key]
-    return None
-
 class AllDoorsUnlocked(py_trees.behaviour.Behaviour):
+    """
+    Condition to check if all doors are unlocked.
+    """
     def __init__(self, name="AllDoorsUnlocked", env=None, obs=None, debug=False):
         super(AllDoorsUnlocked, self).__init__(name)
         self.env = env
@@ -136,32 +145,10 @@ class AllDoorsUnlocked(py_trees.behaviour.Behaviour):
                 print(self.feedback_message)
             return py_trees.common.Status.FAILURE
 
-class IsInsideRoom(py_trees.behaviour.Behaviour):
-    def __init__(self, name="IsInsideRoom", env=None, obs=None, debug=False):
-        super(IsInsideRoom, self).__init__(name)
-        self.env = env
-        self.obs = obs
-        self.debug = debug
-        
-    def update_obs(self, new_obs):
-        self.obs = new_obs
-
-    def update(self):
-        positions = extract_positions(self.obs)
-        door_pos = positions.get('door', 0)
-        agent_pos = positions['agent']
-        if not door_pos or agent_pos[1] >= door_pos[1]:
-            self.feedback_message = "Agent has passed the door."
-            if self.debug:
-                print("Inside")
-            return py_trees.common.Status.SUCCESS
-        else:
-            self.feedback_message = "Agent has not passed the door, considered outside the room."
-            if self.debug:
-                print("Outside")
-            return py_trees.common.Status.FAILURE
-        
 class IsNearObject(py_trees.behaviour.Behaviour):
+    """
+    Condition to check if the agent is near a specified object.
+    """
     def __init__(self, name="IsNearObject", env=None, obs=None, object_type='door', object_color=None, debug=False):
         super(IsNearObject, self).__init__(name)
         self.env = env
@@ -209,6 +196,9 @@ class IsNearObject(py_trees.behaviour.Behaviour):
             return py_trees.common.Status.FAILURE
 
 class DoorOpen(py_trees.behaviour.Behaviour):
+    """
+    Condition to check if any door of a specified color is open.
+    """
     def __init__(self, name="AnyDoorOpen", env=None, obs=None, door_color="red", debug=False):
         super(DoorOpen, self).__init__(name)
         self.env = env
@@ -246,8 +236,10 @@ class DoorOpen(py_trees.behaviour.Behaviour):
                 print(self.feedback_message)
             return py_trees.common.Status.FAILURE
 
-
 class AllDoorsOpen(py_trees.behaviour.Behaviour):
+    """
+    Condition to check if all doors are open.
+    """
     def __init__(self, name="AllDoorsOpen", env=None, obs=None, debug=False):
         super(AllDoorsOpen, self).__init__(name)
         self.env = env
@@ -290,6 +282,9 @@ class AllDoorsOpen(py_trees.behaviour.Behaviour):
             return py_trees.common.Status.FAILURE
 
 class IsPathClear(py_trees.behaviour.Behaviour):
+    """
+    Condition to check if the path to the door is clear.
+    """
     def __init__(self, name="IsPathClear", env=None, obs=None, debug=False):
         super(IsPathClear, self).__init__(name)
         self.env = env

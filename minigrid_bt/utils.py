@@ -1,5 +1,3 @@
-# minigrid_bt/utils.py
-
 import numpy as np
 import operator
 from functools import reduce
@@ -20,6 +18,18 @@ ACTION_TO_IDX = {"turn_left": 0, "turn_right": 1, "move_forward": 2, "pick_up": 
 
 # Utility Functions
 def extract_grid_and_direction(obs):
+    """
+    Extracts the grid and direction from the observation.
+
+    Args:
+        obs (dict or tuple): The observation containing the grid image and direction.
+
+    Returns:
+        tuple: A tuple containing the grid image and direction.
+
+    Raises:
+        ValueError: If the observation structure is unexpected.
+    """
     if isinstance(obs, dict) and 'image' in obs and 'direction' in obs:
         return obs['image'], obs['direction']
     elif isinstance(obs, tuple) and 'image' in obs[0] and 'direction' in obs[0]:
@@ -28,6 +38,15 @@ def extract_grid_and_direction(obs):
         raise ValueError("Unexpected observation structure")
 
 def extract_positions(obs):
+    """
+    Extracts the positions of all objects from the observation.
+
+    Args:
+        obs (dict or tuple): The observation containing the grid image.
+
+    Returns:
+        dict: A dictionary with object names as keys and their positions as values.
+    """
     image = obs['image'] if 'image' in obs else obs[0]['image']
     positions = {}
     for object_name, object_idx in OBJECT_TO_IDX.items():
@@ -38,6 +57,15 @@ def extract_positions(obs):
     return positions
 
 def extract_multiple_positions(obs):
+    """
+    Extracts the positions of all instances of each object from the observation.
+
+    Args:
+        obs (dict or tuple): The observation containing the grid image.
+
+    Returns:
+        dict: A dictionary with object names as keys and lists of positions as values.
+    """
     image = obs['image'] if 'image' in obs else obs[0]['image']
     positions = {}
     for object_name, object_idx in OBJECT_TO_IDX.items():
@@ -47,7 +75,37 @@ def extract_multiple_positions(obs):
             positions[object_name] = list(zip(x, y))  # Store all positions as list of tuples
     return positions
 
+def find_ball_position_any_color(obs):
+    """
+    Finds the position of any ball in the observation, regardless of color.
+
+    Args:
+        obs (dict or tuple): The observation containing the grid image.
+
+    Returns:
+        tuple or None: The position of the ball, or None if no ball is found.
+    """
+    positions = extract_positions(obs)
+    for key in positions:
+        if key.startswith('ball'):
+            return positions[key]
+    return None
+
 def align_direction_to_target(current_position, target_position, current_direction):
+    """
+    Aligns the agent's direction to face the target position.
+
+    Args:
+        current_position (tuple): The agent's current position.
+        target_position (tuple): The target position to face.
+        current_direction (int): The agent's current direction.
+
+    Returns:
+        list: A list of actions required to align the direction.
+
+    Raises:
+        ValueError: If the move vector is invalid.
+    """
     goal_vector = (target_position[0] - current_position[0], target_position[1] - current_position[1])
 
     if goal_vector == (0, 0):
@@ -71,6 +129,16 @@ def align_direction_to_target(current_position, target_position, current_directi
     return action_sequence
 
 def calculate_turn_direction(current_direction, target_direction):
+    """
+    Calculates the number of turns needed to face the target direction.
+
+    Args:
+        current_direction (int): The agent's current direction.
+        target_direction (int): The target direction.
+
+    Returns:
+        int: The number of turns needed to face the target direction.
+    """
     if current_direction is None or target_direction is None:
         return 0
     direction_diff = np.int8(current_direction) - np.int8(target_direction)
@@ -78,18 +146,52 @@ def calculate_turn_direction(current_direction, target_direction):
     return normalized_diff
 
 def find_path_to_adjacent(grid, start, target, current_direction):
+    """
+    Finds a path to a position adjacent to the target using A* pathfinding.
+
+    Args:
+        grid (ndarray): The grid representing the environment.
+        start (tuple): The starting position.
+        target (tuple): The target position.
+        current_direction (int): The agent's current direction.
+
+    Returns:
+        list: A list of positions representing the path.
+    """
     path = astar_pathfinding(grid, start, target, current_direction)
     if path:
         return path
     return []
 
 def find_path_to_adjacent_doors(grid, start, target, current_direction):
+    """
+    Finds a path to a position adjacent to the target, considering doors, using A* pathfinding.
+
+    Args:
+        grid (ndarray): The grid representing the environment.
+        start (tuple): The starting position.
+        target (tuple): The target position.
+        current_direction (int): The agent's current direction.
+
+    Returns:
+        list: A list of positions representing the path.
+    """
     path = astar_pathfinding_doors(grid, start, target, current_direction)
     if path:
         return path
     return []
 
 def find_door_position(obs, color):
+    """
+    Finds the position of a door with a specific color in the observation.
+
+    Args:
+        obs (dict or tuple): The observation containing the grid image.
+        color (str): The color of the door to find.
+
+    Returns:
+        tuple or None: The position of the door, or None if no door is found.
+    """
     positions = extract_multiple_positions(obs)
     color_idx = COLOR_TO_IDX[color]
     image = obs['image'] if 'image' in obs else obs[0]['image']
@@ -103,6 +205,18 @@ def find_door_position(obs, color):
     return None
 
 def astar_pathfinding(grid, start, goal, initial_direction):
+    """
+    A* pathfinding algorithm to find a path to a position adjacent to the goal.
+
+    Args:
+        grid (ndarray): The grid representing the environment.
+        start (tuple): The starting position.
+        goal (tuple): The goal position.
+        initial_direction (int): The agent's initial direction.
+
+    Returns:
+        list: A list of positions representing the path, or an empty list if no path is found.
+    """
     def heuristic(a, b, direction):
         return abs(a[0] - b[0]) + abs(a[1] - b[1]) + (direction != initial_direction)
 
@@ -151,6 +265,18 @@ def astar_pathfinding(grid, start, goal, initial_direction):
     return []
 
 def astar_pathfinding_doors(grid, start, goal, initial_direction):
+    """
+    A* pathfinding algorithm to find a path to a position adjacent to the goal, considering doors.
+
+    Args:
+        grid (ndarray): The grid representing the environment.
+        start (tuple): The starting position.
+        goal (tuple): The goal position.
+        initial_direction (int): The agent's initial direction.
+
+    Returns:
+        list: A list of positions representing the path, or an empty list if no path is found.
+    """
     def heuristic(a, b, direction):
         return abs(a[0] - b[0]) + abs(a[1] - b[1]) + (direction != initial_direction)
 
@@ -202,6 +328,18 @@ def astar_pathfinding_doors(grid, start, goal, initial_direction):
     return []
 
 def astar_pathfinding_to_goal(grid, start, goal, current_direction):
+    """
+    A* pathfinding algorithm to find a path to the goal.
+
+    Args:
+        grid (ndarray): The grid representing the environment.
+        start (tuple): The starting position.
+        goal (tuple): The goal position.
+        current_direction (int): The agent's current direction.
+
+    Returns:
+        list: A list of positions representing the path, or an empty list if no path is found.
+    """
     def heuristic(a, b, direction):
         return abs(a[0] - b[0]) + abs(a[1] - b[1]) + (direction != current_direction)
 
@@ -248,10 +386,28 @@ def astar_pathfinding_to_goal(grid, start, goal, current_direction):
     return []
 
 def find_any_ball_position(obs):
+    """
+    Finds the position of any ball in the observation.
+
+    Args:
+        obs (dict or tuple): The observation containing the grid image.
+
+    Returns:
+        tuple or None: The position of the ball, or None if no ball is found.
+    """
     positions = extract_positions(obs)
     return positions.get('ball')
 
 def extract_door_positions(obs):
+    """
+    Extracts the positions of all doors in the observation.
+
+    Args:
+        obs (dict or tuple): The observation containing the grid image.
+
+    Returns:
+        list: A list of tuples representing the positions of doors along with their color and state.
+    """
     image = obs['image'] if 'image' in obs else obs[0]['image']
     door_positions = []
     door_idx = OBJECT_TO_IDX['door']
@@ -262,6 +418,15 @@ def extract_door_positions(obs):
     return door_positions
 
 def find_locked_door_position(obs):
+    """
+    Finds the position of a locked door in the observation.
+
+    Args:
+        obs (dict or tuple): The observation containing the grid image.
+
+    Returns:
+        tuple or None: The position of the locked door, or None if no locked door is found.
+    """
     door_positions = extract_door_positions(obs)
     for pos in door_positions:
         x, y, door_color, door_state = pos
@@ -270,6 +435,17 @@ def find_locked_door_position(obs):
     return None
 
 def prepare_action_sequence(path, current_direction, goal_pos):
+    """
+    Prepares a sequence of actions to follow the given path to the goal position.
+
+    Args:
+        path (list): The path to follow.
+        current_direction (int): The agent's current direction.
+        goal_pos (tuple): The goal position.
+
+    Returns:
+        list: A list of actions to follow the path and align with the goal.
+    """
     action_sequence = []
     if path:
         for start, end in zip(path[:-1], path[1:]):
@@ -283,6 +459,17 @@ def prepare_action_sequence(path, current_direction, goal_pos):
     return action_sequence
 
 def prepare_action_sequence_doors(path, current_direction, goal_pos):
+    """
+    Prepares a sequence of actions to follow the given path to the goal position, considering doors.
+
+    Args:
+        path (list): The path to follow.
+        current_direction (int): The agent's current direction.
+        goal_pos (tuple): The goal position.
+
+    Returns:
+        list: A list of actions to follow the path, open doors, and align with the goal.
+    """
     action_sequence = []
     if path:
         for start, end in zip(path[:-1], path[1:]):
@@ -305,8 +492,21 @@ def prepare_action_sequence_doors(path, current_direction, goal_pos):
             action_sequence += dir_correction
     return action_sequence
 
-
 def calculate_actions_to_move(start, end, current_direction):
+    """
+    Calculates the actions needed to move from the start position to the end position.
+
+    Args:
+        start (tuple): The starting position.
+        end (tuple): The ending position.
+        current_direction (int): The agent's current direction.
+
+    Returns:
+        list: A list of actions needed to move to the end position.
+
+    Raises:
+        ValueError: If start or end positions are invalid.
+    """
     if not (isinstance(start, tuple) and isinstance(end, tuple) and len(start) == 2 and len(end) == 2):
         raise ValueError(f"Start and end must be tuples of two integers. Received start={start}, end={end}.")
     actions = []
@@ -323,6 +523,16 @@ def calculate_actions_to_move(start, end, current_direction):
     return actions
 
 def find_ball_position(obs, color):
+    """
+    Finds the position of a ball of a specific color in the observation.
+
+    Args:
+        obs (dict or tuple): The observation containing the grid image.
+        color (str): The color of the ball to find.
+
+    Returns:
+        tuple or None: The position of the ball, or None if no ball is found.
+    """
     grid, agent_dir = extract_grid_and_direction(obs)
     object_layer = grid[:,:,0]
     color_layer = grid[:,:,1]
@@ -334,6 +544,18 @@ def find_ball_position(obs, color):
     return None
 
 def find_safe_drop_location(grid, door_pos, agent_pos, agent_dir):
+    """
+    Finds a safe location to drop an item near the door.
+
+    Args:
+        grid (ndarray): The grid representing the environment.
+        door_pos (tuple): The position of the door.
+        agent_pos (tuple): The agent's current position.
+        agent_dir (int): The agent's current direction.
+
+    Returns:
+        tuple or None: The safe drop location, or None if no safe location is found.
+    """
     if agent_dir % 2 == 0:
         prioritized_offsets = [(-1, 0), (1, 0), (0, -1), (0, 1)]
     else:
@@ -346,7 +568,22 @@ def find_safe_drop_location(grid, door_pos, agent_pos, agent_dir):
                 return (nx, ny)
     return None
 
+def update_tree_obs(tree, new_obs):
+    """
+    Updates the observation in each node of the behavior tree.
+
+    Args:
+        tree (Tree): The behavior tree.
+        new_obs (dict): The new observation to update in the tree.
+    """
+    for node in tree.root.iterate():
+        if hasattr(node, 'update_obs'):
+            node.update_obs(new_obs)
+
 class ExtendedFlatObsWrapper(ObservationWrapper):
+    """
+    A wrapper that converts the observation to a flat representation including the direction.
+    """
     def __init__(self, env):
         super().__init__(env)
         imgSpace = env.observation_space.spaces["image"]
@@ -359,22 +596,38 @@ class ExtendedFlatObsWrapper(ObservationWrapper):
         )
 
     def observation(self, obs):
+        """
+        Converts the observation to a flat array including the direction.
+
+        Args:
+            obs (dict): The original observation.
+
+        Returns:
+            ndarray: The flattened observation with the direction.
+        """
         image = obs["image"].flatten()
         direction = np.array([obs["direction"]], dtype="uint8")
         return np.concatenate((image, direction))
 
 class ReconstructObsWrapper:
+    """
+    A class to reconstruct the original observation from the flat representation.
+    """
     def __init__(self, img_shape):
         self.img_shape = img_shape
         self.img_size = reduce(operator.mul, img_shape, 1)
 
     def reconstruct_observation(self, flat_obs):
+        """
+        Reconstructs the original observation from the flat representation.
+
+        Args:
+            flat_obs (ndarray): The flattened observation.
+
+        Returns:
+            dict: The reconstructed observation with the image and direction.
+        """
         img_flat = flat_obs[:-1]
         direction = flat_obs[-1]
         image = img_flat.reshape(self.img_shape).astype(np.float32)
         return {'image': image, 'direction': direction}
-
-def update_tree_obs(tree, new_obs):
-    for node in tree.root.iterate():
-        if hasattr(node, 'update_obs'):
-            node.update_obs(new_obs)
