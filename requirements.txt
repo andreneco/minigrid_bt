@@ -3,3 +3,7 @@ py_trees
 numpy
 stable-baselines3
 minigrid
+operator
+functools
+heapq
+pandas
